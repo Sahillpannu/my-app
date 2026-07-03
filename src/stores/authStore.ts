@@ -66,25 +66,31 @@ export const useAuthStore = create<AuthStore>((set) => ({
       email,
       password,
       options: {
-        emailRedirectTo: undefined, // we use OTP not magic link
+        emailRedirectTo: undefined, // OTP only, no magic link
       },
     });
     set({ loading: false });
     if (error) return { error: error.message, needsVerification: false };
-    // if user exists but not confirmed → needs OTP
+    // No session yet → user needs to verify via OTP
     const needsVerification = !data.session;
     return { error: null, needsVerification };
   },
 
+  // type: "email" is what works with our current Supabase OTP config — do not change
   verifyOtp: async (email, token) => {
     set({ loading: true });
     const { error } = await supabase.auth.verifyOtp({
       email,
       token,
-      type: "signup",
+      type: "email",
     });
     set({ loading: false });
-    if (error) return { error: error.message };
+    if (error) {
+      if (error.message.toLowerCase().includes("expired")) {
+        return { error: "Code expired. Please request a new code." };
+      }
+      return { error: "Invalid verification code." };
+    }
     return { error: null };
   },
 
@@ -95,11 +101,6 @@ export const useAuthStore = create<AuthStore>((set) => ({
     });
     if (error) return { error: error.message };
     return { error: null };
-  },
-
-  signOut: async () => {
-    await supabase.auth.signOut();
-    set({ user: null, session: null });
   },
 
   sendPasswordReset: async (email) => {
@@ -116,5 +117,10 @@ export const useAuthStore = create<AuthStore>((set) => ({
     set({ loading: false });
     if (error) return { error: error.message };
     return { error: null };
+  },
+
+  signOut: async () => {
+    await supabase.auth.signOut();
+    set({ user: null, session: null });
   },
 }));
