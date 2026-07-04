@@ -13,7 +13,6 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
 import { ArrowLeft, Plus, Trash, SignOut } from 'phosphor-react-native';
 import { useAuthStore } from '@/src/stores/authStore';
 import { useVehicleStore } from '@/src/stores/vehicleStore';
@@ -141,9 +140,7 @@ export default function SettingsScreen() {
       <SafeAreaView style={styles.safe} edges={['top']}>
         {/* ── Header ─────────────────────────────────── */}
         <View style={styles.topBar}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <ArrowLeft size={20} color={COLORS.textPrimary} weight="bold" />
-          </TouchableOpacity>
+          <View style={{ width: 40 }} />
           <Text style={styles.headerTitle}>Settings</Text>
           {/* balance the header layout */}
           <View style={{ width: 40 }} />
