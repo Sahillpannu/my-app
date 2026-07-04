@@ -9,7 +9,7 @@ export default function Index() {
   }
 
   if (user) {
-    return <Redirect href="/(main)/map" />;
+    return <Redirect href={"/(main)/" as any} />;
   }
 
   return <Redirect href="/(auth)/login" />;

@@ -33,7 +33,7 @@ export default function RootLayout() {
     if (!user && !inAuth) {
       router.replace("/(auth)/login");
     } else if (user && inAuth) {
-      router.replace("/(main)/map");
+      router.replace("/(main)/" as any);
     }
   }, [user, initialized, segments]);
 
