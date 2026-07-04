@@ -102,10 +102,10 @@ export default function DashboardScreen() {
             </View>
             <TouchableOpacity
               style={styles.signOutBtn}
-              onPress={handleSignOut}
+              onPress={() => router.push('/(main)/settings')}
               activeOpacity={0.7}
             >
-              <SignOut size={20} color={COLORS.danger} weight="bold" />
+              <SignOut size={20} color={COLORS.accent} weight="bold" />
             </TouchableOpacity>
           </View>
 
@@ -172,7 +172,7 @@ export default function DashboardScreen() {
           {/* ── Vehicle ID card ──────────────────────────── */}
           <Text style={styles.sectionLabel}>ACTIVE VEHICLE</Text>
           {activeProfile ? (
-            <TouchableOpacity style={styles.vehicleCard} activeOpacity={0.85}>
+            <TouchableOpacity style={styles.vehicleCard} activeOpacity={0.85} onPress={() => router.push('/(main)/settings')}>
               <View style={styles.vehiclePlate}>
                 <Text style={styles.vehiclePlateText}>
                   {activeProfile.vehicleClass.slice(0, 2)}
@@ -188,13 +188,13 @@ export default function DashboardScreen() {
               <Text style={styles.chevron}>›</Text>
             </TouchableOpacity>
           ) : (
-            <TouchableOpacity style={styles.vehicleCardEmpty} activeOpacity={0.85}>
+            <TouchableOpacity style={styles.vehicleCardEmpty} activeOpacity={0.85} onPress={() => router.push('/(main)/settings')}>
               <View style={styles.vehiclePlateEmpty}>
                 <Text style={styles.vehiclePlateEmptyText}>＋</Text>
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.vehicleEmptyTitle}>No vehicle configured</Text>
-                <Text style={styles.vehicleEmptySub}>Set up in Settings — coming soon</Text>
+                <Text style={styles.vehicleEmptySub}>Tap to set up in Settings →</Text>
               </View>
             </TouchableOpacity>
           )}
