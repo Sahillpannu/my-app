@@ -203,7 +203,9 @@ export default function DashboardScreen() {
           <View style={styles.recentHeader}>
             <Text style={styles.sectionLabel}>RECENT TRIPS</Text>
             {recentTrips.length > 0 && (
-              <Text style={styles.seeAllLink}>SEE ALL</Text>
+              <TouchableOpacity onPress={() => router.push('/(main)/trips')}>
+                <Text style={styles.seeAllLink}>SEE ALL</Text>
+              </TouchableOpacity>
             )}
           </View>
 
