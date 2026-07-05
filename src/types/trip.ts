@@ -16,3 +16,10 @@ export interface Trip {
   vehicleClass: string;
   status: 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
 }
+
+export interface SearchResult {
+  id: string;
+  displayName: string;
+  shortName: string;
+  coords: Coords;
+}
