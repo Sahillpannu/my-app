@@ -39,7 +39,7 @@ const COLORS = {
 export default function DashboardScreen() {
   const { user, signOut } = useAuthStore();
   const { trips, hydrate: hydrateTrips } = useTripStore();
-  const { profiles, getActiveProfile, hydrate: hydrateVehicles } = useVehicleStore();
+  const { profiles, hydrate: hydrateVehicles } = useVehicleStore();
 
   useEffect(() => {
     if (user?.id) {
@@ -47,8 +47,6 @@ export default function DashboardScreen() {
       hydrateVehicles(user.id);
     }
   }, [user?.id]);
-
-  const activeProfile = getActiveProfile();
 
   const todayStats = useMemo(() => {
     const today = new Date().toDateString();
@@ -59,6 +57,41 @@ export default function DashboardScreen() {
     const totalMin = todayTrips.reduce((sum, t) => sum + t.durationMinutes, 0);
     return { count: todayTrips.length, km: totalKm, minutes: totalMin };
   }, [trips]);
+
+  const complianceAlerts = useMemo(() => {
+    const alerts: { id: string; text: string; severity: 'critical' | 'warning' }[] = [];
+
+    if (profiles.length === 0) {
+      alerts.push({
+        id: 'no-vehicle',
+        text: 'No vehicle configured — add one in Settings',
+        severity: 'critical',
+      });
+      return alerts;
+    }
+
+    profiles.forEach((p) => {
+      if (!p.permitExpiryDate) return;
+      const daysUntil = Math.ceil(
+        (new Date(p.permitExpiryDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+      );
+      if (daysUntil < 0) {
+        alerts.push({
+          id: `expired-${p.id}`,
+          text: `${p.name} — permit expired ${Math.abs(daysUntil)} day${Math.abs(daysUntil) === 1 ? '' : 's'} ago`,
+          severity: 'critical',
+        });
+      } else if (daysUntil <= 14) {
+        alerts.push({
+          id: `expiring-${p.id}`,
+          text: `${p.name} — permit expires in ${daysUntil} day${daysUntil === 1 ? '' : 's'}`,
+          severity: 'warning',
+        });
+      }
+    });
+
+    return alerts;
+  }, [profiles]);
 
   const recentTrips = trips.slice(0, 3);
   const firstName = user?.email ? user.email.split('@')[0] : 'Driver';
@@ -123,6 +156,28 @@ export default function DashboardScreen() {
             </TouchableOpacity>
           </View>
 
+          {complianceAlerts.length > 0 && (
+            <View style={styles.alertsSection}>
+              {complianceAlerts.map((alert) => (
+                <View
+                  key={alert.id}
+                  style={[
+                    styles.alertCard,
+                    alert.severity === 'critical' ? styles.alertCritical : styles.alertWarning,
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.alertDot,
+                      { backgroundColor: alert.severity === 'critical' ? COLORS.danger : COLORS.accent },
+                    ]}
+                  />
+                  <Text style={styles.alertText}>{alert.text}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+
           {/* ── Instrument cluster — today's stats ──────── */}
           <View style={styles.clusterCard}>
             <View style={styles.clusterHeader}>
@@ -168,36 +223,6 @@ export default function DashboardScreen() {
             </View>
             <Text style={styles.mapBtnChevron}>›</Text>
           </TouchableOpacity>
-
-          {/* ── Vehicle ID card ──────────────────────────── */}
-          <Text style={styles.sectionLabel}>ACTIVE VEHICLE</Text>
-          {activeProfile ? (
-            <TouchableOpacity style={styles.vehicleCard} activeOpacity={0.85} onPress={() => router.push('/(main)/settings')}>
-              <View style={styles.vehiclePlate}>
-                <Text style={styles.vehiclePlateText}>
-                  {activeProfile.vehicleClass.slice(0, 2)}
-                </Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.vehicleName}>{activeProfile.name}</Text>
-                <Text style={styles.vehicleSpecs}>
-                  {activeProfile.lengthMetres}M · {activeProfile.gcmTonnes}T ·{' '}
-                  {activeProfile.vehicleClass.replace(/_/g, ' ')}
-                </Text>
-              </View>
-              <Text style={styles.chevron}>›</Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity style={styles.vehicleCardEmpty} activeOpacity={0.85} onPress={() => router.push('/(main)/settings')}>
-              <View style={styles.vehiclePlateEmpty}>
-                <Text style={styles.vehiclePlateEmptyText}>＋</Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.vehicleEmptyTitle}>No vehicle configured</Text>
-                <Text style={styles.vehicleEmptySub}>Tap to set up in Settings →</Text>
-              </View>
-            </TouchableOpacity>
-          )}
 
           {/* ── Recent trips ─────────────────────────────── */}
           <View style={styles.recentHeader}>
@@ -361,6 +386,41 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
 
+  alertsSection: {
+    marginHorizontal: 20,
+    marginTop: 14,
+    gap: 8,
+  },
+  alertCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: COLORS.surface,
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  alertCritical: {
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.danger,
+  },
+  alertWarning: {
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.accent,
+  },
+  alertDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+  },
+  alertText: {
+    fontSize: 12,
+    color: COLORS.textPrimary,
+    fontWeight: '600',
+    flex: 1,
+  },
+
   // Instrument cluster
   clusterCard: {
     marginHorizontal: 20,
@@ -477,88 +537,6 @@ const styles = StyleSheet.create({
     marginHorizontal: 20,
     marginTop: 28,
     marginBottom: 12,
-  },
-
-  // Vehicle card
-  vehicleCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    marginHorizontal: 20,
-    backgroundColor: COLORS.surface,
-    borderRadius: 18,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 1,
-  },
-  vehiclePlate: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    backgroundColor: COLORS.accentDim,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  vehiclePlateText: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: COLORS.accent,
-    letterSpacing: 0.5,
-  },
-  vehicleName: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
-  },
-  vehicleSpecs: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    marginTop: 3,
-    letterSpacing: 0.3,
-  },
-  chevron: {
-    fontSize: 22,
-    color: COLORS.textTertiary,
-  },
-  vehicleCardEmpty: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    marginHorizontal: 20,
-    backgroundColor: 'transparent',
-    borderRadius: 18,
-    padding: 14,
-    borderWidth: 1.5,
-    borderColor: COLORS.border,
-    borderStyle: 'dashed',
-  },
-  vehiclePlateEmpty: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    backgroundColor: COLORS.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  vehiclePlateEmptyText: {
-    fontSize: 18,
-    color: COLORS.textTertiary,
-    fontWeight: '600',
-  },
-  vehicleEmptyTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: COLORS.textSecondary,
-  },
-  vehicleEmptySub: {
-    fontSize: 12,
-    color: COLORS.textTertiary,
-    marginTop: 2,
   },
 
   // Recent trips

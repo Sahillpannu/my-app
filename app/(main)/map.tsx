@@ -11,6 +11,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useLocalSearchParams } from 'expo-router';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useLocationStore } from '@/src/stores/locationStore';
 import { useTripStore } from '@/src/stores/tripStore';
@@ -49,6 +50,7 @@ export default function MapScreen() {
     useLocationStore();
   const { trips, startTrip, completeTrip } = useTripStore();
   const { getActiveProfile } = useVehicleStore();
+  const { tripId } = useLocalSearchParams<{ tripId?: string }>();
 
   const [originText, setOriginText] = useState('');
   const [destinationText, setDestinationText] = useState('');
@@ -119,6 +121,36 @@ export default function MapScreen() {
       });
     }
   }, [currentLocation]);
+
+  // Rehydrate a route preview when navigated here from a tapped trip card
+  // in the Trips screen. This runs whenever tripId changes — including
+  // when the Map tab is already mounted from a prior visit, since Tabs
+  // keep screens alive rather than remounting them.
+  useEffect(() => {
+    if (!tripId) return;
+    if (mapMode === 'NAVIGATING') {
+      Alert.alert(
+        'Trip in progress',
+        'Finish or stop your current trip before loading a different route.'
+      );
+      return;
+    }
+
+    const trip = trips.find((t) => t.id === tripId);
+    if (!trip) return;
+
+    setOriginText(trip.origin);
+    setDestinationText(trip.destination);
+    setOriginCoords(trip.originCoords);
+    setDestinationCoords(trip.destinationCoords);
+    setMockDistance(trip.distanceKm);
+    setMockDuration(trip.durationMinutes);
+    setMapMode('ROUTE_PREVIEW');
+
+    setTimeout(() => {
+      snapTo(SCREEN_HEIGHT - SNAP_HALF);
+    }, 100);
+  }, [tripId, trips, mapMode, snapTo]);
 
   const computeMockDistance = (a: Coords, b: Coords): number => {
     const R = 6371;

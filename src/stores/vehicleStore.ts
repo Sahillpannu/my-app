@@ -10,6 +10,7 @@ interface VehicleStore {
   currentUserId: string | null;
   hydrate: (userId: string) => Promise<void>;
   addProfile: (data: Omit<VehicleProfile, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
+  updateProfile: (id: string, updates: Partial<Omit<VehicleProfile, 'id' | 'createdAt'>>) => Promise<void>;
   deleteProfile: (id: string) => Promise<void>;
   setActiveProfile: (id: string) => Promise<void>;
   getActiveProfile: () => VehicleProfile | null;
@@ -60,6 +61,18 @@ export const useVehicleStore = create<VehicleStore>((set, get) => ({
     const newActiveId = activeProfileId ?? profile.id;
     set({ profiles: updated, activeProfileId: newActiveId });
     await persist(currentUserId, updated, newActiveId);
+  },
+
+  updateProfile: async (id, updates) => {
+    const { currentUserId, profiles, activeProfileId } = get();
+    if (!currentUserId) return;
+    const updated = profiles.map((p) =>
+      p.id === id
+        ? { ...p, ...updates, updatedAt: new Date().toISOString() }
+        : p
+    );
+    set({ profiles: updated });
+    await persist(currentUserId, updated, activeProfileId);
   },
 
   deleteProfile: async (id) => {

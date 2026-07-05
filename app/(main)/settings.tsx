@@ -13,10 +13,11 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, Plus, Trash, SignOut } from 'phosphor-react-native';
+import { Plus, SignOut } from 'phosphor-react-native';
 import { useAuthStore } from '@/src/stores/authStore';
 import { useVehicleStore } from '@/src/stores/vehicleStore';
-import { VehicleClass, AxleConfig } from '@/src/types/vehicle';
+import { useSubscriptionStore } from '@/src/stores/subscriptionStore';
+import { VehicleClass, AxleConfig, VehicleProfile } from '@/src/types/vehicle';
 
 // ─── Design tokens — light theme, matches Dashboard ──────────────
 const COLORS = {
@@ -44,6 +45,23 @@ const VEHICLE_CLASSES: { value: VehicleClass; label: string }[] = [
   { value: 'PBS', label: 'PBS' },
 ];
 
+function formatPermitDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function daysUntil(iso: string): number {
+  return Math.ceil((new Date(iso).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+}
+
+function isPermitExpired(iso: string): boolean {
+  return daysUntil(iso) < 0;
+}
+
+function isPermitExpiringSoon(iso: string): boolean {
+  const days = daysUntil(iso);
+  return days >= 0 && days <= 14;
+}
+
 export default function SettingsScreen() {
   const { user, signOut } = useAuthStore();
   const {
@@ -51,11 +69,14 @@ export default function SettingsScreen() {
     activeProfileId,
     hydrate,
     addProfile,
+    updateProfile,
     deleteProfile,
     setActiveProfile,
   } = useVehicleStore();
+  const { currentPlan, hydrate: hydrateSubscription, selectPlan, cancelPlan } = useSubscriptionStore();
 
   const [modalVisible, setModalVisible] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [vehicleClass, setVehicleClass] = useState<VehicleClass>('GENERAL_ACCESS');
   const [length, setLength] = useState('');
@@ -63,10 +84,14 @@ export default function SettingsScreen() {
   const [height, setHeight] = useState('');
   const [gvm, setGvm] = useState('');
   const [gcm, setGcm] = useState('');
+  const [permitExpiryDate, setPermitExpiryDate] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (user?.id) hydrate(user.id);
+    if (user?.id) {
+      hydrate(user.id);
+      hydrateSubscription(user.id);
+    }
   }, [user?.id]);
 
   const resetForm = () => {
@@ -77,7 +102,33 @@ export default function SettingsScreen() {
     setHeight('');
     setGvm('');
     setGcm('');
+    setPermitExpiryDate('');
+    setEditingId(null);
     setFormError(null);
+  };
+
+  const handleOpenEdit = (profile: VehicleProfile) => {
+    setEditingId(profile.id);
+    setName(profile.name);
+    setVehicleClass(profile.vehicleClass);
+    setLength(profile.lengthMetres.toString());
+    setWidth(profile.widthMetres.toString());
+    setHeight(profile.heightMetres.toString());
+    setGvm(profile.gvmTonnes.toString());
+    setGcm(profile.gcmTonnes.toString());
+    setPermitExpiryDate(
+      profile.permitExpiryDate
+        ? profile.permitExpiryDate.slice(0, 10)
+        : ''
+    );
+    setFormError(null);
+    setModalVisible(true);
+  };
+
+  const handleOpenAdd = () => {
+    resetForm();
+    setEditingId(null);
+    setModalVisible(true);
   };
 
   const handleSave = async () => {
@@ -95,7 +146,23 @@ export default function SettingsScreen() {
       setFormError('Dimensions must be valid positive numbers');
       return;
     }
-    await addProfile({
+
+    let permitISO: string | null = null;
+    if (permitExpiryDate.trim() !== '') {
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      if (!dateRegex.test(permitExpiryDate.trim())) {
+        setFormError('Permit expiry must be in YYYY-MM-DD format, e.g. 2026-12-31');
+        return;
+      }
+      const parsedDate = new Date(permitExpiryDate.trim());
+      if (isNaN(parsedDate.getTime())) {
+        setFormError('Permit expiry date is not a valid date');
+        return;
+      }
+      permitISO = parsedDate.toISOString();
+    }
+
+    const payload = {
       name: name.trim(),
       vehicleClass,
       lengthMetres: parsed[0],
@@ -105,8 +172,15 @@ export default function SettingsScreen() {
       gcmTonnes: parsed[4],
       axleConfig: 'TANDEM' as AxleConfig,
       dangerousGoods: false,
-      permitExpiryDate: null,
-    });
+      permitExpiryDate: permitISO,
+    };
+
+    if (editingId) {
+      await updateProfile(editingId, payload);
+    } else {
+      await addProfile(payload);
+    }
+
     resetForm();
     setModalVisible(false);
   };
@@ -155,7 +229,7 @@ export default function SettingsScreen() {
             <Text style={styles.sectionLabel}>VEHICLE PROFILES</Text>
             <TouchableOpacity
               style={styles.addBtn}
-              onPress={() => setModalVisible(true)}
+              onPress={handleOpenAdd}
               activeOpacity={0.8}
             >
               <Plus size={12} color={COLORS.accent} weight="bold" />
@@ -167,7 +241,7 @@ export default function SettingsScreen() {
             <TouchableOpacity
               style={styles.emptyState}
               activeOpacity={0.8}
-              onPress={() => setModalVisible(true)}
+              onPress={handleOpenAdd}
             >
               <View style={styles.emptyIconWrap}>
                 <Text style={styles.emptyIcon}>🚛</Text>
@@ -179,45 +253,144 @@ export default function SettingsScreen() {
             </TouchableOpacity>
           ) : (
             <View style={styles.profilesList}>
-              {profiles.map((p) => {
-                const isActive = activeProfileId === p.id;
-                return (
-                  <TouchableOpacity
-                    key={p.id}
-                    style={[styles.vehicleRow, isActive && styles.vehicleRowActive]}
-                    onPress={() => setActiveProfile(p.id)}
-                    activeOpacity={0.8}
+              {profiles.map((p) => (
+                <TouchableOpacity
+                  key={p.id}
+                  style={[
+                    styles.vehicleRow,
+                    activeProfileId === p.id && styles.vehicleRowActive,
+                  ]}
+                  onPress={() => setActiveProfile(p.id)}
+                  activeOpacity={0.8}
+                >
+                  <View
+                    style={[
+                      styles.vehiclePlate,
+                      activeProfileId === p.id && styles.vehiclePlateActive,
+                    ]}
                   >
-                    <View style={[styles.vehiclePlate, isActive && styles.vehiclePlateActive]}>
-                      <Text style={[styles.vehiclePlateText, isActive && styles.vehiclePlateTextActive]}>
-                        {p.vehicleClass.slice(0, 2)}
-                      </Text>
-                    </View>
-
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.vehicleName}>{p.name}</Text>
-                      <Text style={styles.vehicleMeta}>
-                        {p.lengthMetres}m · {p.gcmTonnes}t · {p.vehicleClass.replace(/_/g, ' ')}
-                      </Text>
-                    </View>
-
-                    {isActive && (
-                      <View style={styles.activeTag}>
-                        <Text style={styles.activeTagText}>ACTIVE</Text>
-                      </View>
-                    )}
-
-                    <TouchableOpacity
-                      onPress={() => handleDelete(p.id, p.name)}
-                      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                      style={styles.deleteBtn}
+                    <Text
+                      style={[
+                        styles.vehiclePlateText,
+                        activeProfileId === p.id && styles.vehiclePlateTextActive,
+                      ]}
                     >
-                      <Trash size={16} color={COLORS.textTertiary} weight="regular" />
-                    </TouchableOpacity>
+                      {p.vehicleClass.slice(0, 2)}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.vehicleName}>{p.name}</Text>
+                    <Text style={styles.vehicleMeta}>
+                      {p.lengthMetres}M · {p.gcmTonnes}T · {p.vehicleClass.replace(/_/g, ' ')}
+                    </Text>
+                    {p.permitExpiryDate &&
+                      (isPermitExpired(p.permitExpiryDate) ||
+                        isPermitExpiringSoon(p.permitExpiryDate)) && (
+                        <Text
+                          style={[
+                            styles.permitTag,
+                            isPermitExpired(p.permitExpiryDate) && styles.permitTagExpired,
+                            isPermitExpiringSoon(p.permitExpiryDate) && styles.permitTagWarning,
+                          ]}
+                        >
+                          {isPermitExpired(p.permitExpiryDate)
+                            ? 'PERMIT EXPIRED'
+                            : `PERMIT EXPIRES ${formatPermitDate(p.permitExpiryDate)}`}
+                        </Text>
+                      )}
+                  </View>
+                  {activeProfileId === p.id && (
+                    <View style={styles.activeTag}>
+                      <Text style={styles.activeTagText}>ACTIVE</Text>
+                    </View>
+                  )}
+                  <TouchableOpacity
+                    onPress={() => handleOpenEdit(p)}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    style={styles.editBtn}
+                  >
+                    <Text style={styles.editIcon}>✎</Text>
                   </TouchableOpacity>
-                );
-              })}
+                  <TouchableOpacity
+                    onPress={() => handleDelete(p.id, p.name)}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    style={styles.deleteBtn}
+                  >
+                    <Text style={styles.deleteIcon}>×</Text>
+                  </TouchableOpacity>
+                </TouchableOpacity>
+              ))}
             </View>
+          )}
+
+          {/* ── Subscription ─────────────────────────────── */}
+          <Text style={[styles.sectionLabel, { marginTop: 32 }]}>SUBSCRIPTION</Text>
+
+          <View style={styles.planRow}>
+            <TouchableOpacity
+              style={[
+                styles.planCard,
+                currentPlan === 'MONTHLY' && styles.planCardActive,
+              ]}
+              onPress={() => selectPlan('MONTHLY')}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.planLabel}>MONTHLY</Text>
+              <View style={styles.planPriceRow}>
+                <Text style={styles.planPrice}>$15</Text>
+                <Text style={styles.planPeriod}>/mo</Text>
+              </View>
+              <Text style={styles.planSub}>Billed monthly</Text>
+              {currentPlan === 'MONTHLY' && (
+                <View style={styles.planActiveBadge}>
+                  <Text style={styles.planActiveBadgeText}>CURRENT PLAN</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.planCard,
+                currentPlan === 'YEARLY' && styles.planCardActive,
+              ]}
+              onPress={() => selectPlan('YEARLY')}
+              activeOpacity={0.85}
+            >
+              <View style={styles.saveBadge}>
+                <Text style={styles.saveBadgeText}>SAVE 33%</Text>
+              </View>
+              <Text style={styles.planLabel}>YEARLY</Text>
+              <View style={styles.planPriceRow}>
+                <Text style={styles.planPrice}>$120</Text>
+                <Text style={styles.planPeriod}>/yr</Text>
+              </View>
+              <Text style={styles.planSub}>$10/mo equivalent</Text>
+              {currentPlan === 'YEARLY' && (
+                <View style={styles.planActiveBadge}>
+                  <Text style={styles.planActiveBadgeText}>CURRENT PLAN</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          {currentPlan && (
+            <TouchableOpacity
+              style={styles.cancelPlanBtn}
+              onPress={() =>
+                Alert.alert('Cancel subscription', 'Remove your current plan selection?', [
+                  { text: 'Keep plan', style: 'cancel' },
+                  { text: 'Cancel plan', style: 'destructive', onPress: cancelPlan },
+                ])
+              }
+            >
+              <Text style={styles.cancelPlanText}>Cancel subscription</Text>
+            </TouchableOpacity>
+          )}
+
+          {!currentPlan && (
+            <Text style={styles.noPlanHint}>
+              No active plan — select one above to unlock premium routing features
+            </Text>
           )}
 
           {/* ── Account ──────────────────────────────── */}
@@ -258,7 +431,7 @@ export default function SettingsScreen() {
           />
           <View style={styles.modalCard}>
             <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>Add Vehicle</Text>
+            <Text style={styles.modalTitle}>{editingId ? 'Edit Vehicle' : 'Add Vehicle'}</Text>
             <Text style={styles.modalSubtitle}>Configure your vehicle's dimensions and class for accurate route planning.</Text>
 
             {/* Vehicle name */}
@@ -358,6 +531,17 @@ export default function SettingsScreen() {
               </View>
             </View>
 
+            <Text style={styles.fieldLabel}>PERMIT EXPIRY (OPTIONAL)</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="YYYY-MM-DD — e.g. 2026-12-31"
+              placeholderTextColor={COLORS.textTertiary}
+              value={permitExpiryDate}
+              onChangeText={(t) => { setPermitExpiryDate(t); setFormError(null); }}
+              keyboardType="numbers-and-punctuation"
+              maxLength={10}
+            />
+
             {/* Error box */}
             {formError && (
               <View style={styles.errorBox}>
@@ -375,7 +559,7 @@ export default function SettingsScreen() {
                 <Text style={styles.cancelBtnText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.saveBtn} onPress={handleSave} activeOpacity={0.85}>
-                <Text style={styles.saveBtnText}>Save Vehicle</Text>
+                <Text style={styles.saveBtnText}>{editingId ? 'Update Vehicle' : 'Save Vehicle'}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -529,6 +713,19 @@ const styles = StyleSheet.create({
     marginTop: 2,
     letterSpacing: 0.2,
   },
+  permitTag: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: COLORS.textTertiary,
+    marginTop: 3,
+    letterSpacing: 0.3,
+  },
+  permitTagWarning: {
+    color: COLORS.accent,
+  },
+  permitTagExpired: {
+    color: COLORS.danger,
+  },
   activeTag: {
     backgroundColor: COLORS.accentDim,
     paddingHorizontal: 8,
@@ -541,8 +738,106 @@ const styles = StyleSheet.create({
     color: COLORS.accent,
     letterSpacing: 0.8,
   },
+  editBtn: { paddingHorizontal: 4 },
+  editIcon: { fontSize: 15, color: COLORS.textSecondary },
   deleteBtn: {
     padding: 4,
+  },
+  deleteIcon: { fontSize: 20, color: COLORS.textTertiary, lineHeight: 20 },
+
+  planRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginHorizontal: 20,
+  },
+  planCard: {
+    flex: 1,
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    position: 'relative',
+  },
+  planCardActive: {
+    borderColor: COLORS.accent,
+    backgroundColor: COLORS.accentDim,
+  },
+  planLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: COLORS.textTertiary,
+    letterSpacing: 1,
+  },
+  planPriceRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    marginTop: 8,
+  },
+  planPrice: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: COLORS.textPrimary,
+    letterSpacing: -0.5,
+  },
+  planPeriod: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+    marginBottom: 3,
+    marginLeft: 2,
+  },
+  planSub: {
+    fontSize: 10,
+    color: COLORS.textTertiary,
+    marginTop: 4,
+  },
+  saveBadge: {
+    position: 'absolute',
+    top: -8,
+    right: 10,
+    backgroundColor: COLORS.accent,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  saveBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#1A1206',
+    letterSpacing: 0.3,
+  },
+  planActiveBadge: {
+    marginTop: 10,
+    backgroundColor: COLORS.accent,
+    borderRadius: 8,
+    paddingVertical: 5,
+    alignItems: 'center',
+  },
+  planActiveBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#1A1206',
+    letterSpacing: 0.5,
+  },
+  cancelPlanBtn: {
+    marginHorizontal: 20,
+    marginTop: 10,
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  cancelPlanText: {
+    fontSize: 12,
+    color: COLORS.textTertiary,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
+  },
+  noPlanHint: {
+    fontSize: 11,
+    color: COLORS.textTertiary,
+    marginHorizontal: 20,
+    marginTop: 10,
+    textAlign: 'center',
   },
 
   // Account section

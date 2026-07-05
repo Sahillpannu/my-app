@@ -9,6 +9,7 @@ import {
   StatusBar,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
 import { ArrowLeft, Trash } from 'phosphor-react-native';
 import { useAuthStore } from '@/src/stores/authStore';
 import { useTripStore } from '@/src/stores/tripStore';
@@ -63,6 +64,13 @@ export default function TripsScreen() {
     [deleteTrip]
   );
 
+  const handlePress = useCallback((trip: Trip) => {
+    router.push({
+      pathname: '/(main)/map',
+      params: { tripId: trip.id },
+    });
+  }, []);
+
   const completedCount = trips.filter((t) => t.status === 'COMPLETED').length;
   const totalKm = trips
     .filter((t) => t.status === 'COMPLETED')
@@ -78,7 +86,11 @@ export default function TripsScreen() {
     });
 
     return (
-      <View style={styles.tripCard}>
+      <TouchableOpacity
+        style={styles.tripCard}
+        onPress={() => handlePress(item)}
+        activeOpacity={0.85}
+      >
         <View style={styles.tripCardTop}>
           <View style={styles.tripIndexWrap}>
             <Text style={styles.tripIndex}>{String(index + 1).padStart(2, '0')}</Text>
@@ -127,7 +139,7 @@ export default function TripsScreen() {
             <Text style={[styles.statusText, { color: meta.color }]}>{meta.label}</Text>
           </View>
         </View>
-      </View>
+      </TouchableOpacity>
     );
   };
 
