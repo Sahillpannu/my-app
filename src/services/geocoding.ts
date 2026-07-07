@@ -52,7 +52,9 @@ export async function searchPlaces(
     params.append('lon', nearCoords.longitude.toString());
   }
 
-  const res = await fetch(`${NOMINATIM_URL}/search?${params}`, {
+  const url = `${NOMINATIM_URL}/search?${params}`;
+
+  const res = await fetch(url, {
     headers: { 'User-Agent': 'Truckio/1.0 (Australian truck navigation app)' },
   });
 

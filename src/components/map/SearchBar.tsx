@@ -50,7 +50,7 @@ export default function SearchBar({
   const [activeField, setActiveField] = useState<ActiveField>(null);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
-  const lastFiredRequestId = useRef(0);
+  const localRequestId = useRef(0);
 
   const destinationRef = useRef<TextInput>(null);
 
@@ -61,25 +61,31 @@ export default function SearchBar({
         setLoading(false);
         return;
       }
+
+      const thisRequestId = ++localRequestId.current;
+
       try {
-        const { results, requestId } = await searchPlaces(
+        const { results } = await searchPlaces(
           query,
           currentLocation ?? undefined
         );
-        if (requestId >= lastFiredRequestId.current) {
+
+        if (thisRequestId === localRequestId.current) {
           setResults(results);
         }
-      } catch {
+      } catch (err) {
+        console.error('[SearchBar] doSearch failed:', err);
         setResults([]);
       } finally {
-        setLoading(false);
+        if (thisRequestId === localRequestId.current) {
+          setLoading(false);
+        }
       }
     }, 800),
     [currentLocation]
   );
 
   const fireSearch = (text: string) => {
-    lastFiredRequestId.current += 1;
     setLoading(true);
     doSearch(text);
   };

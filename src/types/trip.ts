@@ -23,3 +23,20 @@ export interface SearchResult {
   shortName: string;
   coords: Coords;
 }
+
+export interface BackendTurn {
+  type: string;
+  streetName: string | null;
+  distanceMetres: number;
+  durationSeconds: number;
+  instruction: string;
+}
+
+export interface BackendRouteResponse {
+  totalDistanceKm: number;
+  totalDurationMinutes: number;
+  turns: BackendTurn[];
+  segments: { coordinates: Coords[] }[];
+  coverageMode: string;
+  warning: string | null;
+}
